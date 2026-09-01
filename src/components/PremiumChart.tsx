@@ -149,9 +149,7 @@ export function PremiumChart({
     if (touch) handleMoveAtX(touch.clientX);
   }
 
-  if (primaryPoints.length < 2) {
-    return <p className="text-sm text-ink-500">Not enough history yet to chart a trend.</p>;
-  }
+  const hasEnoughData = primaryPoints.length >= 2;
 
   const hoverPointsBySeries = hoverDate
     ? filteredSeries.map((s) => ({ series: s, point: nearestByDate(s.points, hoverDate) }))
@@ -208,6 +206,11 @@ export function PremiumChart({
         ))}
       </div>
 
+      {!hasEnoughData ? (
+        <p className="py-8 text-center text-sm text-ink-500">
+          Not enough history for this range yet — try a wider one above.
+        </p>
+      ) : (
       <div className="relative">
         <svg
           ref={svgRef}
@@ -363,6 +366,7 @@ export function PremiumChart({
             );
           })()}
       </div>
+      )}
     </div>
   );
 }
