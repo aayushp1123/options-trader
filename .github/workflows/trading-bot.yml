@@ -1,0 +1,20 @@
+name: Trading bot tick
+
+on:
+  schedule:
+    # Every 15 minutes, all day, every day (covers 15m/1h/4h strategies --
+    # the backend itself decides what's actually due each tick). GitHub
+    # free-tier scheduled workflows can run several minutes late under load;
+    # the runner is idempotent (it checks for an existing position before
+    # opening a new one), so a late or double-fired tick is harmless.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # manual "Run workflow" button for testing
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call bot tick endpoint
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.BOT_URL }}/api/bot/tick" \
+            -H "x-bot-secret: ${{ secrets.BOT_SECRET }}"
