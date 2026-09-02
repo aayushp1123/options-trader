@@ -18,6 +18,22 @@ export function getClock(): Promise<Clock> {
   return tradingRequest<Clock>("/v2/clock");
 }
 
+export interface AssetInfo {
+  symbol: string;
+  shortable: boolean;
+  easy_to_borrow: boolean;
+  tradable: boolean;
+}
+
+/** Whether shorting is actually allowed varies per equity/ETF and isn't
+ * knowable in advance without asking Alpaca -- confirmed live: USO
+ * rejected a short with "asset USO cannot be sold short". Checked before
+ * attempting a short entry so a restricted symbol produces a clean skip
+ * instead of a failed order every time the signal recurs. */
+export function getAsset(symbol: string): Promise<AssetInfo> {
+  return tradingRequest<AssetInfo>(`/v2/assets/${encodeURIComponent(symbol)}`);
+}
+
 export interface PortfolioHistory {
   timestamp: number[]; // unix seconds
   equity: number[];

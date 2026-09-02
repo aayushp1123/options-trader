@@ -1,5 +1,5 @@
 import { getCryptoBars, getStockBars, resampleTo4Hour } from "@/lib/alpaca/marketData";
-import { closePosition, getAccount, getClock, getPositions, placeProtectedEntry } from "@/lib/alpaca/trading";
+import { closePosition, getAccount, getAsset, getClock, getPositions, placeProtectedEntry } from "@/lib/alpaca/trading";
 import type { Bar, Position } from "@/lib/alpaca/types";
 import { blockedByCorrelation } from "@/lib/risk/correlationFilter";
 import { sizePosition } from "@/lib/risk/positionSizing";
@@ -8,7 +8,16 @@ import { MARKETS, type MarketConfig } from "./markets";
 export interface TickResult {
   symbol: string;
   strategy: string;
-  action: "opened" | "closed" | "skipped_market_closed" | "skipped_correlation" | "skipped_insufficient_data" | "held" | "no_signal";
+  action:
+    | "opened"
+    | "closed"
+    | "skipped_market_closed"
+    | "skipped_correlation"
+    | "skipped_not_shortable"
+    | "skipped_insufficient_data"
+    | "skipped_error"
+    | "held"
+    | "no_signal";
   detail: string;
 }
 
@@ -46,7 +55,15 @@ export async function runTick(): Promise<TickResult[]> {
     }
 
     const existing = openPositions.find((p) => p.symbol === market.symbol.replace("/", ""));
-    results.push(await evaluateMarket(market, bars, existing, equity, openPositions));
+    try {
+      results.push(await evaluateMarket(market, bars, existing, equity, openPositions));
+    } catch (err) {
+      // One market's order/API failure must never take down the other 4 --
+      // confirmed live: an uncaught error here previously 500'd the whole
+      // tick, so markets after the failing one in MARKETS never even got
+      // evaluated that run.
+      results.push({ symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_error", detail: (err as Error).message });
+    }
   }
 
   return results;
@@ -75,6 +92,13 @@ async function evaluateMarket(
 
   if (blockedByCorrelation(market.symbol, signal.side, openPositions)) {
     return { symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_correlation", detail: "Nasdaq/S&P already long, skipping to avoid doubled exposure" };
+  }
+
+  if (signal.side === "short" && market.assetClass === "us_equity") {
+    const asset = await getAsset(market.symbol);
+    if (!asset.shortable) {
+      return { symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_not_shortable", detail: `${market.symbol} cannot be sold short on this account` };
+    }
   }
 
   const sized = sizePosition({
