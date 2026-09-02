@@ -5,10 +5,13 @@ import {
   getAccount,
   getAsset,
   getClock,
+  getOrders,
   getPositions,
   placeProtectedEntry,
+  placeStopOrder,
 } from "@/lib/alpaca/trading";
-import type { Bar, Position } from "@/lib/alpaca/types";
+import type { Bar, Order, Position } from "@/lib/alpaca/types";
+import { atr } from "@/lib/indicators";
 import { blockedByCorrelation } from "@/lib/risk/correlationFilter";
 import { sizePosition } from "@/lib/risk/positionSizing";
 import { MARKETS, type MarketConfig } from "./markets";
@@ -19,6 +22,7 @@ export interface TickResult {
   action:
     | "opened"
     | "closed"
+    | "healed_missing_stop"
     | "skipped_market_closed"
     | "skipped_correlation"
     | "skipped_not_shortable"
@@ -43,10 +47,63 @@ export async function fetchBars(market: MarketConfig): Promise<Bar[]> {
   return getStockBars(market.symbol, "15Min", BARS_NEEDED);
 }
 
+/**
+ * Verifies every open position (across all 5 managed markets) actually has
+ * a resting protective stop order, and places one if it's ever missing --
+ * for any reason, not just the one already found. Confirmed live: a real
+ * BTC entry filled with no stop_limit order behind it. The entry order and
+ * stop order are two separate sequential API calls (crypto has no
+ * order_class support to make them atomic), and Netlify's hard 10-second
+ * function limit can in principle cut execution off between them even
+ * though placeProtectedEntry no longer waits for a fill first -- normal
+ * network variance on two real external calls is enough on its own. Rather
+ * than trying to guarantee that race never happens (impossible to fully
+ * guarantee against real-world latency), this makes a missing stop
+ * self-healing: run first, every tick, before any new signal evaluation,
+ * so an unprotected position never survives more than one tick interval.
+ */
+async function ensureStopLossOrders(openPositions: Position[]): Promise<TickResult[]> {
+  const results: TickResult[] = [];
+  const openOrders = await getOrders("open", 100);
+
+  for (const market of MARKETS) {
+    const posSymbol = market.symbol.replace("/", "");
+    const position = openPositions.find((p) => p.symbol === posSymbol);
+    if (!position) continue;
+
+    const hasStop = openOrders.some(
+      (o: Order) => o.symbol.replace("/", "") === posSymbol && (o.type === "stop" || o.type === "stop_limit")
+    );
+    if (hasStop) continue;
+
+    try {
+      const bars = await fetchBars(market);
+      const currentAtr = atr(bars, 14);
+      if (currentAtr === null) {
+        results.push({ symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_insufficient_data", detail: "position has no stop but not enough bars yet to compute one -- will retry next tick" });
+        continue;
+      }
+      const entryPrice = parseFloat(position.avg_entry_price);
+      const stopDistance = currentAtr * 1.5;
+      const stopPrice = position.side === "long" ? entryPrice - stopDistance : entryPrice + stopDistance;
+      const qty = String(Math.abs(parseFloat(position.qty)));
+
+      await placeStopOrder({ symbol: market.symbol, entrySide: position.side === "long" ? "buy" : "sell", qty, stopPrice });
+      results.push({ symbol: market.symbol, strategy: market.strategyLabel, action: "healed_missing_stop", detail: `placed missing protective stop at ${stopPrice.toFixed(2)}` });
+    } catch (err) {
+      results.push({ symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_error", detail: `failed to heal missing stop: ${(err as Error).message}` });
+    }
+  }
+
+  return results;
+}
+
 export async function runTick(): Promise<TickResult[]> {
   const [account, openPositions, clock] = await Promise.all([getAccount(), getPositions(), getClock()]);
   const equity = parseFloat(account.equity);
   const results: TickResult[] = [];
+
+  results.push(...(await ensureStopLossOrders(openPositions)));
 
   for (const market of MARKETS) {
     if (market.assetClass === "us_equity" && !clock.is_open) {

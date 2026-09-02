@@ -24,6 +24,7 @@ export interface Order {
   id: string;
   symbol: string;
   side: "buy" | "sell";
+  type: string; // "market" | "stop_limit" | ... -- used to detect whether a resting protective stop exists
   qty: string | null;
   filled_qty: string | null;
   notional: string | null;

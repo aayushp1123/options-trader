@@ -116,23 +116,32 @@ export async function placeProtectedEntry(input: EntryOrderInput): Promise<Order
     }),
   });
 
-  const exitSide = input.side === "buy" ? "sell" : "buy";
-  const limitPrice = input.side === "buy" ? input.stopPrice * 0.99 : input.stopPrice * 1.01;
+  await placeStopOrder({ symbol: input.symbol, entrySide: input.side, qty: input.qty, stopPrice: input.stopPrice });
 
-  await tradingRequest<Order>("/v2/orders", {
+  return entry;
+}
+
+/** Places a standalone protective stop_limit order -- the crypto half of
+ * placeProtectedEntry, factored out so the same logic can also be used to
+ * heal a position that's missing its stop for any reason (see
+ * ensureStopLossOrders in runner.ts). `entrySide` is the side of the
+ * original/current position ("buy"=long, "sell"=short); the stop order
+ * itself is always the opposite side. */
+export function placeStopOrder(params: { symbol: string; entrySide: "buy" | "sell"; qty: string; stopPrice: number }): Promise<Order> {
+  const exitSide = params.entrySide === "buy" ? "sell" : "buy";
+  const limitPrice = params.entrySide === "buy" ? params.stopPrice * 0.99 : params.stopPrice * 1.01;
+  return tradingRequest<Order>("/v2/orders", {
     method: "POST",
     body: JSON.stringify({
-      symbol: input.symbol,
-      qty: input.qty,
+      symbol: params.symbol,
+      qty: params.qty,
       side: exitSide,
       type: "stop_limit",
       time_in_force: "gtc",
-      stop_price: input.stopPrice.toFixed(2),
+      stop_price: params.stopPrice.toFixed(2),
       limit_price: limitPrice.toFixed(2),
     }),
   });
-
-  return entry;
 }
 
 /** Market-closes an open position (used for signal-based exits, distinct
