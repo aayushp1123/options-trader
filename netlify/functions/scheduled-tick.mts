@@ -9,7 +9,7 @@
  * schedulers hitting it is harmless, and this gives a second, independently
  * throttled path in case either platform's cron degrades.
  */
-export default async () => {
+async function scheduledTick() {
   const secret = process.env.BOT_SECRET;
   if (!secret) {
     console.error("[scheduled-tick] BOT_SECRET not configured");
@@ -21,7 +21,9 @@ export default async () => {
   });
   const body = await res.text();
   console.log(`[scheduled-tick] status=${res.status} body=${body}`);
-};
+}
+
+export default scheduledTick;
 
 export const config = {
   schedule: "*/15 * * * *",

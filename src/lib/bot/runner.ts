@@ -1,5 +1,5 @@
 import { getCryptoBars, getStockBars, resampleTo4Hour } from "@/lib/alpaca/marketData";
-import { closePosition, getAccount, getClock, getPositions, placeBracketOrder } from "@/lib/alpaca/trading";
+import { closePosition, getAccount, getClock, getPositions, placeProtectedEntry } from "@/lib/alpaca/trading";
 import type { Bar, Position } from "@/lib/alpaca/types";
 import { blockedByCorrelation } from "@/lib/risk/correlationFilter";
 import { sizePosition } from "@/lib/risk/positionSizing";
@@ -88,7 +88,7 @@ async function evaluateMarket(
     return { symbol: market.symbol, strategy: market.strategyLabel, action: "skipped_insufficient_data", detail: "computed position size was zero" };
   }
 
-  await placeBracketOrder({
+  await placeProtectedEntry({
     symbol: market.symbol,
     side: signal.side === "long" ? "buy" : "sell",
     qty: String(sized.qty),

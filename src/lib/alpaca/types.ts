@@ -25,6 +25,7 @@ export interface Order {
   symbol: string;
   side: "buy" | "sell";
   qty: string | null;
+  filled_qty: string | null;
   notional: string | null;
   status: string;
   order_class: string;
