@@ -40,6 +40,39 @@ export async function getCryptoBars(symbol: string, timeframe: "1Hour", limit: n
   return res.bars[symbol] ?? [];
 }
 
+/** Fetches every bar in [startISO, now) for backtesting, paging through
+ * Alpaca's next_page_token since a multi-month range can exceed what a
+ * single request returns -- distinct from getStockBars/getCryptoBars above,
+ * which are tuned for the live bot's small rolling window and don't need
+ * pagination. */
+export async function getStockBarsRange(symbol: string, timeframe: StockTimeframe, startISO: string): Promise<Bar[]> {
+  const all: Bar[] = [];
+  let pageToken: string | null = null;
+  do {
+    const tokenParam: string = pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : "";
+    const res: { bars: Record<string, Bar[]>; next_page_token: string | null } = await dataRequest(
+      `/v2/stocks/bars?symbols=${encodeURIComponent(symbol)}&timeframe=${timeframe}&start=${startISO}&limit=10000&feed=iex&adjustment=raw${tokenParam}`
+    );
+    all.push(...(res.bars[symbol] ?? []));
+    pageToken = res.next_page_token;
+  } while (pageToken);
+  return all;
+}
+
+export async function getCryptoBarsRange(symbol: string, timeframe: "1Hour", startISO: string): Promise<Bar[]> {
+  const all: Bar[] = [];
+  let pageToken: string | null = null;
+  do {
+    const tokenParam: string = pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : "";
+    const res: { bars: Record<string, Bar[]>; next_page_token: string | null } = await dataRequest(
+      `/v1beta3/crypto/us/bars?symbols=${encodeURIComponent(symbol)}&timeframe=${timeframe}&start=${startISO}&limit=10000${tokenParam}`
+    );
+    all.push(...(res.bars[symbol] ?? []));
+    pageToken = res.next_page_token;
+  } while (pageToken);
+  return all;
+}
+
 /** Aggregates consecutive 1-hour bars into 4-hour bars. Assumes `hourly` is
  * sorted oldest-first and drops a trailing partial group (fewer than 4
  * bars), so every returned bar represents a complete 4h window. */
