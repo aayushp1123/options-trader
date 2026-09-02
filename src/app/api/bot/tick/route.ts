@@ -10,14 +10,16 @@ import { runTick } from "@/lib/bot/runner";
 // order path specifically avoids any wait/poll that could blow past it.
 export const maxDuration = 60;
 
-/** Called every 15 minutes by two independent schedulers: the GitHub
- * Actions workflow (.github/workflows/trading-bot.yml) and Netlify's own
- * Scheduled Function (netlify/functions/scheduled-tick.mts). Neither
- * platform's native Cron feature is used directly for the trading logic
- * itself -- Vercel-style "Hobby cron capped at once/day" isn't Netlify's
- * limitation, but a 15-minute strategy still needs an external trigger
- * hitting this route rather than relying on any single scheduler's
- * reliability alone. */
+/** Called every 15 minutes by the GitHub Actions workflow
+ * (.github/workflows/trading-bot.yml), which runs on GitHub's own
+ * infrastructure at zero cost regardless of this site's own hosting bill.
+ * A Netlify Scheduled Function was tried as a second, redundant scheduler
+ * but removed after it (and the many redeploys during a live debugging
+ * session) burned through 50% of the month's 300-credit free-tier
+ * allowance in the first two days -- Netlify's free plan has no grace
+ * period at 100%, the whole site (including this route) goes offline until
+ * the next billing cycle, which would be a far worse outage than GitHub's
+ * occasional multi-hour scheduling gaps. */
 export async function POST(req: Request) {
   const secret = req.headers.get("x-bot-secret");
   if (!process.env.BOT_SECRET || secret !== process.env.BOT_SECRET) {
