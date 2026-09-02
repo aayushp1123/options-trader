@@ -1,6 +1,6 @@
 import type { Bar } from "@/lib/alpaca/types";
 import { adx, atr, sma, zScore } from "@/lib/indicators";
-import type { ExitCheck, Signal } from "./types";
+import type { ExitCheck, MarketDiagnostics, Signal } from "./types";
 
 const LOOKBACK = 20;
 const ADX_PERIOD = 14;
@@ -31,6 +31,42 @@ export function meanReversionSignal(bars: Bar[]): Signal | null {
     return { side: "short", reason: `z=${z.toFixed(2)} overbought, ADX=${trendStrength.toFixed(1)} range-bound`, entryPrice, atr: volatility };
   }
   return null;
+}
+
+export function meanReversionDiagnostics(bars: Bar[]): MarketDiagnostics | null {
+  if (bars.length === 0) return null;
+  const closes = bars.map((b) => b.c);
+  const z = zScore(closes, LOOKBACK);
+  const trendStrength = adx(bars, ADX_PERIOD);
+  const price = closes[closes.length - 1];
+  const rangeBound = trendStrength !== null && trendStrength < MAX_ADX_FOR_ENTRY;
+
+  let wouldTrigger: "long" | "short" | null = null;
+  if (z !== null && rangeBound) {
+    if (z <= -ENTRY_Z) wouldTrigger = "long";
+    else if (z >= ENTRY_Z) wouldTrigger = "short";
+  }
+
+  return {
+    price,
+    wouldTrigger,
+    note: rangeBound
+      ? `Range-bound -- watching for a |z| >= ${ENTRY_Z} extreme to fade`
+      : "Trending too strongly right now -- mean reversion paused until ADX drops",
+    indicators: [
+      {
+        label: "Z-score",
+        value: z !== null ? z.toFixed(2) : "—",
+        status: z !== null && Math.abs(z) >= ENTRY_Z ? "warn" : "neutral",
+      },
+      {
+        label: "ADX(14)",
+        value: trendStrength !== null ? trendStrength.toFixed(1) : "—",
+        status: rangeBound ? "good" : "warn",
+      },
+      { label: "Entry needs", value: `|z| >= ${ENTRY_Z}, ADX < ${MAX_ADX_FOR_ENTRY}`, status: "neutral" },
+    ],
+  };
 }
 
 export function meanReversionExit(bars: Bar[], side: "long" | "short"): ExitCheck {

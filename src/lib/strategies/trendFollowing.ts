@@ -1,6 +1,6 @@
 import type { Bar } from "@/lib/alpaca/types";
 import { adx, atr, ema } from "@/lib/indicators";
-import type { ExitCheck, Signal } from "./types";
+import type { ExitCheck, MarketDiagnostics, Signal } from "./types";
 
 const FAST_PERIOD = 20;
 const SLOW_PERIOD = 50;
@@ -28,6 +28,38 @@ export function trendFollowingSignal(bars: Bar[]): Signal | null {
     return { side: "long", reason: `EMA${FAST_PERIOD}>EMA${SLOW_PERIOD}, ADX=${trendStrength.toFixed(1)} trending`, entryPrice, atr: volatility };
   }
   return { side: "short", reason: `EMA${FAST_PERIOD}<EMA${SLOW_PERIOD}, ADX=${trendStrength.toFixed(1)} trending`, entryPrice, atr: volatility };
+}
+
+export function trendFollowingDiagnostics(bars: Bar[]): MarketDiagnostics | null {
+  if (bars.length === 0) return null;
+  const closes = bars.map((b) => b.c);
+  const fast = ema(closes, FAST_PERIOD);
+  const slow = ema(closes, SLOW_PERIOD);
+  const trendStrength = adx(bars, ADX_PERIOD);
+  const price = closes[closes.length - 1];
+  const confirmed = trendStrength !== null && trendStrength >= MIN_ADX_FOR_ENTRY;
+
+  let wouldTrigger: "long" | "short" | null = null;
+  if (fast !== null && slow !== null && confirmed) {
+    wouldTrigger = fast > slow ? "long" : "short";
+  }
+
+  return {
+    price,
+    wouldTrigger,
+    note: confirmed
+      ? `Trend confirmed by ADX -- ${fast !== null && slow !== null && fast > slow ? "up" : "down"}trend`
+      : "Waiting for ADX to confirm a real trend before entering",
+    indicators: [
+      { label: `EMA${FAST_PERIOD}`, value: fast !== null ? fast.toFixed(2) : "—", status: "neutral" },
+      { label: `EMA${SLOW_PERIOD}`, value: slow !== null ? slow.toFixed(2) : "—", status: "neutral" },
+      {
+        label: "ADX(14)",
+        value: trendStrength !== null ? trendStrength.toFixed(1) : "—",
+        status: confirmed ? "good" : "warn",
+      },
+    ],
+  };
 }
 
 export function trendFollowingExit(bars: Bar[], side: "long" | "short"): ExitCheck {

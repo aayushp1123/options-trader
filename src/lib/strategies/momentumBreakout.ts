@@ -1,6 +1,6 @@
 import type { Bar } from "@/lib/alpaca/types";
 import { atr, donchianChannel } from "@/lib/indicators";
-import type { ExitCheck, Signal } from "./types";
+import type { ExitCheck, MarketDiagnostics, Signal } from "./types";
 
 const CHANNEL_PERIOD = 20;
 const ATR_PERIOD = 14;
@@ -24,6 +24,33 @@ export function momentumBreakoutSignal(bars: Bar[]): Signal | null {
     };
   }
   return null;
+}
+
+export function momentumBreakoutDiagnostics(bars: Bar[]): MarketDiagnostics | null {
+  if (bars.length === 0) return null;
+  const channel = donchianChannel(bars, CHANNEL_PERIOD);
+  const last = bars[bars.length - 1];
+  const wouldTrigger = channel && last.c > channel.upper ? "long" : null;
+  const distancePct = channel ? ((channel.upper - last.c) / last.c) * 100 : null;
+
+  return {
+    price: last.c,
+    wouldTrigger,
+    note: channel
+      ? wouldTrigger
+        ? "Currently above the breakout level"
+        : `Needs a close above ${channel.upper.toFixed(2)} to break out`
+      : "Not enough history yet",
+    indicators: [
+      { label: `${CHANNEL_PERIOD}-bar high`, value: channel ? channel.upper.toFixed(2) : "—", status: "neutral" },
+      { label: `${CHANNEL_PERIOD}-bar low`, value: channel ? channel.lower.toFixed(2) : "—", status: "neutral" },
+      {
+        label: "Distance to breakout",
+        value: distancePct !== null ? `${distancePct.toFixed(2)}%` : "—",
+        status: wouldTrigger ? "good" : "neutral",
+      },
+    ],
+  };
 }
 
 /** Exit when price closes back inside the channel it broke out of --

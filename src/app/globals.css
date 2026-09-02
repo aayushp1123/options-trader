@@ -153,3 +153,64 @@ body {
   background: var(--teal-100);
   color: var(--teal-700);
 }
+
+/* Aurora background, ported from PortfolioLab's (Aceternity/21st.dev
+   "Aurora Background", hand-ported to vanilla CSS there too) -- a fixed,
+   blurred, slowly-animating gradient layer sitting behind all page content. */
+:root {
+  --aurora-base: repeating-linear-gradient(100deg, #fff 0%, #fff 7%, transparent 10%, transparent 12%, #fff 16%);
+  --aurora-invert: 1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --aurora-base: repeating-linear-gradient(100deg, #000 0%, #000 7%, transparent 10%, transparent 12%, #000 16%);
+    --aurora-invert: 0;
+  }
+}
+:root[data-theme="dark"] {
+  --aurora-base: repeating-linear-gradient(100deg, #000 0%, #000 7%, transparent 10%, transparent 12%, #000 16%);
+  --aurora-invert: 0;
+}
+
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    var(--aurora-base),
+    repeating-linear-gradient(100deg, #3b82f6 10%, #a5b4fc 15%, #93c5fd 20%, #ddd6fe 25%, #60a5fa 30%);
+  background-size: 300%, 200%;
+  background-position: 50% 50%, 50% 50%;
+  opacity: 0.4;
+  filter: blur(10px) invert(var(--aurora-invert));
+  will-change: transform;
+  mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+}
+.aurora-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    var(--aurora-base),
+    repeating-linear-gradient(100deg, #3b82f6 10%, #a5b4fc 15%, #93c5fd 20%, #ddd6fe 25%, #60a5fa 30%);
+  background-size: 200%, 100%;
+  background-attachment: fixed;
+  mix-blend-mode: difference;
+  animation: aurora 60s linear infinite;
+}
+@keyframes aurora {
+  from {
+    background-position: 50% 50%, 50% 50%;
+  }
+  to {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg::after {
+    animation: none;
+  }
+}

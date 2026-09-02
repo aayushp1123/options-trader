@@ -14,7 +14,7 @@ export interface TickResult {
 
 const BARS_NEEDED = 120; // enough for a 50-period EMA/ADX with warmup room
 
-async function fetchBars(market: MarketConfig): Promise<Bar[]> {
+export async function fetchBars(market: MarketConfig): Promise<Bar[]> {
   if (market.assetClass === "crypto") {
     return getCryptoBars(market.symbol, "1Hour", BARS_NEEDED);
   }

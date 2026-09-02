@@ -1,8 +1,12 @@
 import type { Bar } from "@/lib/alpaca/types";
-import { meanReversionExit, meanReversionSignal } from "@/lib/strategies/meanReversion";
-import { momentumBreakoutExit, momentumBreakoutSignal } from "@/lib/strategies/momentumBreakout";
-import { trendFollowingExit, trendFollowingSignal } from "@/lib/strategies/trendFollowing";
-import type { ExitCheck, Signal } from "@/lib/strategies/types";
+import { meanReversionDiagnostics, meanReversionExit, meanReversionSignal } from "@/lib/strategies/meanReversion";
+import {
+  momentumBreakoutDiagnostics,
+  momentumBreakoutExit,
+  momentumBreakoutSignal,
+} from "@/lib/strategies/momentumBreakout";
+import { trendFollowingDiagnostics, trendFollowingExit, trendFollowingSignal } from "@/lib/strategies/trendFollowing";
+import type { ExitCheck, MarketDiagnostics, Signal } from "@/lib/strategies/types";
 
 export interface MarketConfig {
   symbol: string;
@@ -10,6 +14,7 @@ export interface MarketConfig {
   strategyLabel: string;
   getSignal: (bars: Bar[]) => Signal | null;
   getExit: (bars: Bar[], side: "long" | "short") => ExitCheck;
+  getDiagnostics: (bars: Bar[]) => MarketDiagnostics | null;
 }
 
 export const MARKETS: MarketConfig[] = [
@@ -19,6 +24,7 @@ export const MARKETS: MarketConfig[] = [
     strategyLabel: "mean-reversion-15m",
     getSignal: meanReversionSignal,
     getExit: meanReversionExit,
+    getDiagnostics: meanReversionDiagnostics,
   },
   {
     symbol: "QQQ",
@@ -26,6 +32,7 @@ export const MARKETS: MarketConfig[] = [
     strategyLabel: "mean-reversion-15m",
     getSignal: meanReversionSignal,
     getExit: meanReversionExit,
+    getDiagnostics: meanReversionDiagnostics,
   },
   {
     symbol: "BTC/USD",
@@ -33,6 +40,7 @@ export const MARKETS: MarketConfig[] = [
     strategyLabel: "momentum-breakout-1h",
     getSignal: momentumBreakoutSignal,
     getExit: (bars) => momentumBreakoutExit(bars),
+    getDiagnostics: momentumBreakoutDiagnostics,
   },
   {
     symbol: "GLD",
@@ -40,6 +48,7 @@ export const MARKETS: MarketConfig[] = [
     strategyLabel: "trend-following-4h",
     getSignal: trendFollowingSignal,
     getExit: trendFollowingExit,
+    getDiagnostics: trendFollowingDiagnostics,
   },
   {
     symbol: "USO",
@@ -47,5 +56,6 @@ export const MARKETS: MarketConfig[] = [
     strategyLabel: "trend-following-4h",
     getSignal: trendFollowingSignal,
     getExit: trendFollowingExit,
+    getDiagnostics: trendFollowingDiagnostics,
   },
 ];
