@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
-import { PremiumChart } from "@/components/PremiumChart";
 import { PositionsList } from "@/components/PositionsList";
+import { PortfolioValueChartExpandable } from "@/components/PortfolioValueChartExpandable";
 import { getDashboardData } from "@/lib/bot/dashboardData";
 import { scanMarkets } from "@/lib/bot/scan";
 
@@ -68,9 +68,9 @@ export default async function DashboardPage() {
           Portfolio Value Over Time
         </h2>
         {portfolioSeries.length >= 2 ? (
-          <PremiumChart
-            series={[{ label: "Portfolio Value", color: "var(--teal-600)", points: portfolioSeries, fill: true }]}
-            defaultRange="1M"
+          <PortfolioValueChartExpandable
+            points={portfolioSeries}
+            dashboard={{ totalValue: equity, asOf: new Date().toISOString(), portfolioSeries, positions }}
           />
         ) : (
           <p className="text-sm text-ink-500">Not enough history yet to chart.</p>
