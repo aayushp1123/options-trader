@@ -2,8 +2,8 @@
  * Second, redundant scheduler for /api/bot/tick, running on Netlify's own
  * Scheduled Functions (free tier, no card, already-authenticated project --
  * zero new signup). Added because GitHub Actions' free-tier schedule proved
- * to fire far less often than its declared */15 * * * * (observed gaps of
- * 1-4.5 hours in practice, not ~15 minutes). Runs alongside the GitHub
+ * to fire far less often than its declared every-15-minutes cron (observed
+ * gaps of 1-4.5 hours in practice, not ~15 minutes). Runs alongside the GitHub
  * Actions workflow rather than replacing it -- the tick endpoint is
  * idempotent (checks real Alpaca positions before acting), so two
  * schedulers hitting it is harmless, and this gives a second, independently
