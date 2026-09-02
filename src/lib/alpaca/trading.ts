@@ -55,15 +55,6 @@ export function getOrder(id: string): Promise<Order> {
   return tradingRequest<Order>(`/v2/orders/${id}`);
 }
 
-async function waitForFill(orderId: string, attempts = 6, delayMs = 1000): Promise<Order> {
-  for (let i = 0; i < attempts; i++) {
-    const order = await getOrder(orderId);
-    if (order.status === "filled") return order;
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-  return getOrder(orderId); // give up waiting, return whatever the last real status is
-}
-
 /** Places a market entry with a hard stop-loss enforced by Alpaca itself
  * (a real resting order at the broker, not application logic polling
  * afterward), so it survives the bot process not running for a tick.
@@ -78,12 +69,26 @@ async function waitForFill(orderId: string, attempts = 6, delayMs = 1000): Promi
  *
  * Crypto orders don't support order_class or stop_loss at all (confirmed
  * against Alpaca's docs -- only plain market/limit/stop_limit orders exist
- * for crypto). So for crypto: place the market entry, wait for it to
- * actually fill, then place an independent stop_limit order for the filled
- * qty as the protective stop -- still a real standing order at the broker,
- * just two orders instead of one order with an attached leg. The stop_limit
- * leaves 1% of slippage room between stop and limit price so it can still
- * fill during a fast move instead of sitting unfilled past the stop. */
+ * for crypto). So for crypto: place the market entry, then immediately
+ * place an independent stop_limit order for the SAME requested qty as the
+ * protective stop -- two orders instead of one with an attached leg.
+ *
+ * Deliberately does NOT wait/poll for the entry to actually fill before
+ * placing the stop, even though that would give an exact filled qty:
+ * Netlify's free-tier synchronous function limit is a real, hard 10
+ * seconds (confirmed against their docs -- separate from and stricter than
+ * this route's own `maxDuration` config, which the platform ceiling
+ * overrides regardless). A polling wait risks the function getting killed
+ * after the entry fills but before the stop is placed, leaving a real
+ * position with no stop-loss at all -- exactly the outcome the hard-stop
+ * rule exists to prevent. Firing both orders back-to-back keeps total
+ * execution to two quick sequential calls, safely under that ceiling. If
+ * the entry only partially fills, Alpaca simply won't execute more of the
+ * stop than the position actually holds (crypto is spot/long-only, so
+ * there's no way to end up net short from an oversized stop order). The
+ * stop_limit leaves 1% of slippage room between stop and limit price so it
+ * can still fill during a fast move instead of sitting unfilled past the
+ * stop. */
 export async function placeProtectedEntry(input: EntryOrderInput): Promise<Order> {
   if (input.assetClass !== "crypto") {
     return tradingRequest<Order>("/v2/orders", {
@@ -111,8 +116,6 @@ export async function placeProtectedEntry(input: EntryOrderInput): Promise<Order
     }),
   });
 
-  const filled = await waitForFill(entry.id);
-  const filledQty = filled.filled_qty ?? input.qty;
   const exitSide = input.side === "buy" ? "sell" : "buy";
   const limitPrice = input.side === "buy" ? input.stopPrice * 0.99 : input.stopPrice * 1.01;
 
@@ -120,7 +123,7 @@ export async function placeProtectedEntry(input: EntryOrderInput): Promise<Order
     method: "POST",
     body: JSON.stringify({
       symbol: input.symbol,
-      qty: filledQty,
+      qty: input.qty,
       side: exitSide,
       type: "stop_limit",
       time_in_force: "gtc",
@@ -129,11 +132,28 @@ export async function placeProtectedEntry(input: EntryOrderInput): Promise<Order
     }),
   });
 
-  return filled;
+  return entry;
 }
 
 /** Market-closes an open position (used for signal-based exits, distinct
  * from the hard stop-loss which Alpaca enforces on its own). */
 export function closePosition(symbol: string): Promise<Order> {
   return tradingRequest<Order>(`/v2/positions/${encodeURIComponent(symbol)}`, { method: "DELETE" });
+}
+
+/** Cancels any remaining open orders for a symbol. Required after a
+ * signal-based exit on crypto specifically: the protective stop there is a
+ * separate, independently-placed stop_limit order (crypto has no oto/
+ * bracket support), not a formally linked child leg the way an equity's
+ * stop is -- so closing the position does NOT automatically cancel it.
+ * Left standing, a stale stop could later fill against a position that no
+ * longer exists. Called for every exit, not just crypto, as a cheap general
+ * safety net regardless of asset class. Matches on the symbol with slashes
+ * stripped since order symbols and position symbols don't always agree on
+ * crypto's "BTC/USD" vs "BTCUSD" formatting. */
+export async function cancelOpenOrdersForSymbol(symbol: string): Promise<void> {
+  const openOrders = await tradingRequest<Order[]>("/v2/orders?status=open&limit=100");
+  const normalized = symbol.replace("/", "");
+  const matching = openOrders.filter((o) => o.symbol.replace("/", "") === normalized);
+  await Promise.all(matching.map((o) => tradingRequest<void>(`/v2/orders/${o.id}`, { method: "DELETE" })));
 }

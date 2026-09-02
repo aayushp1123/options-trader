@@ -1,5 +1,13 @@
 import { getCryptoBars, getStockBars, resampleTo4Hour } from "@/lib/alpaca/marketData";
-import { closePosition, getAccount, getAsset, getClock, getPositions, placeProtectedEntry } from "@/lib/alpaca/trading";
+import {
+  cancelOpenOrdersForSymbol,
+  closePosition,
+  getAccount,
+  getAsset,
+  getClock,
+  getPositions,
+  placeProtectedEntry,
+} from "@/lib/alpaca/trading";
 import type { Bar, Position } from "@/lib/alpaca/types";
 import { blockedByCorrelation } from "@/lib/risk/correlationFilter";
 import { sizePosition } from "@/lib/risk/positionSizing";
@@ -80,6 +88,12 @@ async function evaluateMarket(
     const exit = market.getExit(bars, existing.side);
     if (exit.shouldExit) {
       await closePosition(existing.symbol);
+      // The crypto protective stop is a separate order, not a linked child
+      // leg, so closing the position doesn't cancel it on its own -- do
+      // that explicitly so a stale stop can't fill later against a
+      // position that no longer exists. Applied to every exit, not just
+      // crypto, as a cheap general safety net.
+      await cancelOpenOrdersForSymbol(existing.symbol).catch(() => {});
       return { symbol: market.symbol, strategy: market.strategyLabel, action: "closed", detail: exit.reason };
     }
     return { symbol: market.symbol, strategy: market.strategyLabel, action: "held", detail: exit.reason };
