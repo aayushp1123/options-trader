@@ -7,12 +7,13 @@
  */
 import { getStockBarsRange, getCryptoBarsRange, resampleTo4Hour } from "../src/lib/alpaca/marketData";
 import { MARKETS } from "../src/lib/bot/markets";
-import { runBacktest, type BacktestResult } from "../src/lib/backtest/engine";
+import { runBacktest, runWalkForward, type BacktestResult } from "../src/lib/backtest/engine";
 import type { Bar } from "../src/lib/alpaca/types";
 
 const STARTING_EQUITY = 100_000;
 const EQUITY_MONTHS_BACK = 6;
 const COMMODITY_MONTHS_BACK = 12; // 4h bars need a longer window for enough trades to be meaningful
+const WALK_FORWARD_PERIODS = 3;
 
 function monthsAgoISO(months: number): string {
   const d = new Date();
@@ -55,6 +56,31 @@ function printResult(r: BacktestResult, barCount: number) {
   }
 }
 
+function printWalkForward(symbol: string, bars: Bar[], market: (typeof MARKETS)[number]) {
+  const periods = runWalkForward(bars, market, STARTING_EQUITY, WALK_FORWARD_PERIODS);
+  console.log(`\nWalk-forward (${WALK_FORWARD_PERIODS} sequential periods) -- is the edge consistent, or one lucky window?`);
+  if (periods.length === 0) {
+    console.log("  Not enough bars to split into meaningful periods.");
+    return;
+  }
+  for (const p of periods) {
+    const r = p.result;
+    const range = `${p.startDate.slice(0, 10)} -> ${p.endDate.slice(0, 10)}`;
+    if (r.trades.length === 0) {
+      console.log(`  Period ${p.periodIndex} (${range}): 0 trades`);
+      continue;
+    }
+    console.log(
+      `  Period ${p.periodIndex} (${range}): ${r.trades.length} trades, ${r.totalReturnPct >= 0 ? "+" : ""}${r.totalReturnPct.toFixed(2)}%, win rate ${r.winRate?.toFixed(0)}%, maxDD -${r.maxDrawdownPct.toFixed(1)}%`
+    );
+  }
+  const positivePeriods = periods.filter((p) => p.result.totalReturnPct > 0).length;
+  const periodsWithTrades = periods.filter((p) => p.result.trades.length > 0).length;
+  if (periodsWithTrades > 0) {
+    console.log(`  -> Positive in ${positivePeriods}/${periodsWithTrades} periods that actually traded.`);
+  }
+}
+
 async function main() {
   if (!process.env.ALPACA_API_KEY_ID || !process.env.ALPACA_API_SECRET_KEY) {
     console.error("Set ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY in the environment first.");
@@ -69,6 +95,7 @@ async function main() {
     const result = runBacktest(bars, market, STARTING_EQUITY);
     results.push({ result, barCount: bars.length });
     printResult(result, bars.length);
+    printWalkForward(market.symbol, bars, market);
   }
 
   console.log(`\n${"=".repeat(60)}`);

@@ -123,3 +123,56 @@ export function runBacktest(bars: Bar[], market: MarketConfig, startingEquity: n
     maxDrawdownPct: maxDrawdown * 100,
   };
 }
+
+export interface WalkForwardPeriod {
+  periodIndex: number;
+  startDate: string;
+  endDate: string;
+  result: BacktestResult;
+}
+
+/**
+ * Splits history into `numPeriods` sequential, non-overlapping chunks and
+ * backtests each independently, instead of reporting one aggregate number
+ * for the whole range. The point: a strategy with a great aggregate return
+ * can still be one lucky trade sitting in an otherwise-flat year (this is
+ * exactly what the single-pass backtest couldn't tell apart for GLD/USO --
+ * 7-10 trades total, one huge winner each). Consistent, similar-sized
+ * results across periods is real evidence of edge; one outlier period
+ * carrying the whole thing is a warning sign, not a strategy.
+ *
+ * There's no parameter-fitting step here (the strategies use fixed
+ * thresholds, not something trained on data), so this isn't classic ML
+ * walk-forward optimization -- it's the practical equivalent for a
+ * rule-based strategy: out-of-sample consistency across time, not
+ * in-sample/out-of-sample split around a fitting step.
+ *
+ * Each period gets its own WARMUP_BARS of real leading history borrowed
+ * from immediately before it (not counted as part of the period's own
+ * trades), so indicators are correctly warmed up at the start of every
+ * period rather than only the very first one.
+ */
+export function runWalkForward(bars: Bar[], market: MarketConfig, startingEquity: number, numPeriods: number): WalkForwardPeriod[] {
+  const evalLength = bars.length - WARMUP_BARS;
+  if (evalLength < numPeriods * 10) return []; // too little data per period to be worth splitting
+
+  const chunkSize = Math.floor(evalLength / numPeriods);
+  const periods: WalkForwardPeriod[] = [];
+
+  for (let p = 0; p < numPeriods; p++) {
+    const sliceStart = p * chunkSize;
+    const sliceEnd = p === numPeriods - 1 ? bars.length : WARMUP_BARS + (p + 1) * chunkSize;
+    const periodBars = bars.slice(sliceStart, sliceEnd);
+    if (periodBars.length <= WARMUP_BARS) continue;
+
+    const result = runBacktest(periodBars, market, startingEquity);
+    periods.push({
+      periodIndex: p + 1,
+      startDate: periodBars[WARMUP_BARS].t,
+      endDate: periodBars[periodBars.length - 1].t,
+      result,
+    });
+  }
+
+  return periods;
+}
